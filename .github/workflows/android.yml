@@ -27,34 +27,44 @@ jobs:
     - name: Install NDK
       run: sdkmanager "ndk;25.2.9519653"
 
-    - name: Fix Makefiles for Linux & Prepare C++
+    - name: Fix Makefiles and Prepare C++
       run: |
         cd src
         
-        # 1. Переименовываем main.c в main.cpp (для C++)
+        # 1. Переименовываем main.c в main.cpp
         if [ -f main.c ]; then mv main.c main.cpp; fi
         
-        # 2. ЛЕЧИМ MAKEFILE ОТ WINDOWS-КОМАНД
-        # Удаляем "cmd /c" (вызов командной строки Windows)
-        sed -i 's/cmd \/c //g' Makefile
-        sed -i 's/cmd \/c //g' Makefile.Android
-        
-        # Заменяем "if exist" на "test -e" (проверка файла в Linux)
-        sed -i 's/if exist/test -e/g' Makefile.Android
-        
-        # Заменяем удаление папок (rmdir /s /q -> rm -rf)
-        sed -i 's/rmdir \/s \/q/rm -rf/g' Makefile.Android
-        sed -i 's/del \/s \/q/rm -rf/g' Makefile.Android
-        
-        # Исправляем слеши (обратные \ на прямые /)
-        sed -i 's/\\/\//g' Makefile.Android
-
-        # 3. Настраиваем компилятор на C++17
+        # 2. ИСПРАВЛЕНИЕ КОМПИЛЯТОРА (C++17)
+        # Меняем gcc на g++ в обоих Makefile
         sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile
+        sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile.Android
+        
+        # Меняем стандарты
         sed -i 's/-std=c99/-std=c++17/' Makefile
-        # Убираем флаги, на которые ругается C++
+        sed -i 's/-std=c99/-std=c++17/' Makefile.Android
+        
+        # Убираем строгие проверки
         sed -i 's/-Werror//' Makefile
         sed -i 's/-Wstrict-prototypes//' Makefile
+
+        # 3. УДАЛЕНИЕ WINDOWS КОМАНД (Аккуратно!)
+        # Удаляем вызовы cmd /c
+        sed -i 's/cmd \/c //g' Makefile.Android
+        
+        # Заменяем Windows удаление (del) на Linux (rm)
+        sed -i 's/del \/f \/q/rm -f/g' Makefile.Android
+        sed -i 's/rmdir \/s \/q/rm -rf/g' Makefile.Android
+        
+        # Заменяем Windows копирование (copy /y) на Linux (cp)
+        sed -i 's/copy \/y/cp -f/g' Makefile.Android
+        
+        # Заменяем проверку существования (if exist ...)
+        # Это самое сложное место, меняем всю конструкцию на Linux аналог
+        sed -i 's/if exist/test -e/g' Makefile.Android
+        
+        # Исправляем слеши ТОЛЬКО в путях к бинарникам, не ломая переносы строк
+        sed -i 's/android.gravity\\bin/android.gravity\/bin/g' Makefile.Android
+        sed -i 's/android.gravity\\obj/android.gravity\/obj/g' Makefile.Android
 
     - name: Build APK
       run: |
@@ -62,7 +72,7 @@ jobs:
         export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
         
         # Запускаем сборку
-        # SHELL=bash гарантирует, что make не будет искать cmd
+        # SHELL=/bin/bash важен!
         make PLATFORM=PLATFORM_ANDROID \
              PROJECT_NAME=gravity \
              PROJECT_SOURCE_FILES=main.cpp \
