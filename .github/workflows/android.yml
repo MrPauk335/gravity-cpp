@@ -12,8 +12,6 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-      with:
-        submodules: recursive
 
     - name: Setup Java
       uses: actions/setup-java@v4
@@ -27,21 +25,24 @@ jobs:
     - name: Install NDK
       run: sdkmanager "ndk;25.2.9519653"
 
-    # ЭТАП 1: Собираем саму библиотеку Raylib
-    # Без этого шага нечего копировать!
+    # ЭТАП 1: Скачиваем Raylib вручную (так как его нет в репозитории)
+    - name: Download Raylib
+      run: |
+        cd src
+        git clone --depth 1 https://github.com/raysan5/raylib.git raylib
+
+    # ЭТАП 2: Собираем библиотеку Raylib
     - name: Build Raylib Library
       run: |
         cd src/raylib/src
-        
-        # Настраиваем окружение
         export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
         
-        # Собираем Raylib для Android (arm64)
+        # Собираем либу
         make PLATFORM=PLATFORM_ANDROID \
              ANDROID_ARCH=arm64-v8a \
              ANDROID_API_VERSION=29
 
-    # ЭТАП 2: Готовим твой код и Makefile игры
+    # ЭТАП 3: Готовим твой код и Makefile игры
     - name: Fix Game Makefiles and Prepare C++
       run: |
         cd src
@@ -59,35 +60,33 @@ jobs:
         sed -i 's/-Werror//' Makefile
         sed -i 's/-Wstrict-prototypes//' Makefile
 
-        # 2. Удаляем Windows команды
+        # 2. Чистим Windows команды
         sed -i 's/cmd \/c //g' Makefile.Android
         sed -i '/if exist/d' Makefile.Android
-        sed -i '/if not exist/d' Makefile.Android # Удаляем старые проверки
+        sed -i '/if not exist/d' Makefile.Android
         
-        # 3. Добавляем создание папок по-линуксовому
-        # Вставляем mkdir -p перед вызовом копирования (строка 168 примерно)
+        # 3. Создаем папки (mkdir -p)
+        # Вставляем mkdir -p перед $(PROJECT_BUILD_PATH)
         sed -i 's/$(PROJECT_BUILD_PATH)/mkdir -p $(PROJECT_BUILD_PATH)/g' Makefile.Android
         
         # 4. Исправляем команду копирования (copy -> cp)
         sed -i 's/copy \/Y/cp -f/g' Makefile.Android
         sed -i 's/copy \/y/cp -f/g' Makefile.Android
         
-        # 5. Исправляем пути (слеши)
-        # Это уберет ошибки типа src\com
+        # 5. Исправляем слеши (Глобально, так как мы теперь на Linux)
         sed -i 's/\\/\//g' Makefile.Android
         
         # 6. Указываем путь к Raylib
-        # (Так как мы собрали его в шаге 1, он лежит в raylib/src)
+        # (Теперь он лежит в src/raylib, поэтому путь просто "raylib")
         sed -i 's/..\/..\/raylib/raylib/g' Makefile.Android
 
-    # ЭТАП 3: Собираем саму игру (APK)
+    # ЭТАП 4: Собираем APK
     - name: Build APK
       run: |
         cd src
         export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
         
-        # Запускаем сборку
-        # Используем ignore-errors (-i), чтобы он не падал на мелких ошибках создания папок
+        # -i (ignore errors) поможет пропустить ошибки повторного создания папок
         make -i PLATFORM=PLATFORM_ANDROID \
              PROJECT_NAME=gravity \
              PROJECT_SOURCE_FILES=main.cpp \
