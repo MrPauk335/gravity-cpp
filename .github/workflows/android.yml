@@ -25,22 +25,26 @@ jobs:
     - name: Install NDK
       run: sdkmanager "ndk;25.2.9519653"
 
-    # ЭТАП 1: Скачиваем Raylib вручную (так как его нет в репозитории)
+    # ЭТАП 1: Скачиваем Raylib
     - name: Download Raylib
       run: |
         cd src
         git clone --depth 1 https://github.com/raysan5/raylib.git raylib
 
-    # ЭТАП 2: Собираем библиотеку Raylib
+    # ЭТАП 2: Собираем библиотеку Raylib (С ЯВНЫМ CLANG)
     - name: Build Raylib Library
       run: |
         cd src/raylib/src
-        export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
+        export ANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
+        # Добавляем путь к компиляторам в PATH
+        export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
         
-        # Собираем либу
+        # Собираем с явным указанием компилятора!
         make PLATFORM=PLATFORM_ANDROID \
              ANDROID_ARCH=arm64-v8a \
-             ANDROID_API_VERSION=29
+             ANDROID_API_VERSION=29 \
+             CC=aarch64-linux-android29-clang \
+             AR=llvm-ar
 
     # ЭТАП 3: Готовим твой код и Makefile игры
     - name: Fix Game Makefiles and Prepare C++
@@ -52,10 +56,9 @@ jobs:
         
         # --- ПАТЧИМ MAKEFILE ИГРЫ ---
         
-        # 1. C++ настройки
-        sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile
-        sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile.Android
-        sed -i 's/-std=c99/-std=c++17/' Makefile
+        # 1. Заменяем gcc на clang++ (так как NDK удалил gcc)
+        sed -i 's/gcc/clang++/' Makefile.Android
+        # Удаляем лишние флаги, которые clang не любит или которые мешают C++
         sed -i 's/-std=c99/-std=c++17/' Makefile.Android
         sed -i 's/-Werror//' Makefile
         sed -i 's/-Wstrict-prototypes//' Makefile
@@ -66,32 +69,33 @@ jobs:
         sed -i '/if not exist/d' Makefile.Android
         
         # 3. Создаем папки (mkdir -p)
-        # Вставляем mkdir -p перед $(PROJECT_BUILD_PATH)
         sed -i 's/$(PROJECT_BUILD_PATH)/mkdir -p $(PROJECT_BUILD_PATH)/g' Makefile.Android
         
-        # 4. Исправляем команду копирования (copy -> cp)
+        # 4. Исправляем команду копирования
         sed -i 's/copy \/Y/cp -f/g' Makefile.Android
         sed -i 's/copy \/y/cp -f/g' Makefile.Android
         
-        # 5. Исправляем слеши (Глобально, так как мы теперь на Linux)
+        # 5. Исправляем слеши
         sed -i 's/\\/\//g' Makefile.Android
         
         # 6. Указываем путь к Raylib
-        # (Теперь он лежит в src/raylib, поэтому путь просто "raylib")
         sed -i 's/..\/..\/raylib/raylib/g' Makefile.Android
 
-    # ЭТАП 4: Собираем APK
+    # ЭТАП 4: Собираем APK (С ЯВНЫМ CLANG++)
     - name: Build APK
       run: |
         cd src
-        export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
+        export ANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
+        export PATH=$ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH
         
-        # -i (ignore errors) поможет пропустить ошибки повторного создания папок
+        # Запускаем сборку
+        # Передаем CC=clang++, чтобы Makefile не пытался искать gcc
         make -i PLATFORM=PLATFORM_ANDROID \
              PROJECT_NAME=gravity \
              PROJECT_SOURCE_FILES=main.cpp \
              ANDROID_ARCH=arm64-v8a \
              ANDROID_API_VERSION=29 \
+             CC=aarch64-linux-android29-clang++ \
              SHELL=/bin/bash
 
     - name: Upload APK
