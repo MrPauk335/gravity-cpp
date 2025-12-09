@@ -12,8 +12,9 @@ jobs:
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
-    # ИСПРАВЛЕНИЕ 1: Ставим Java 17 (обязательно для новых Android Tools)
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
@@ -23,22 +24,35 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    # ИСПРАВЛЕНИЕ 2: Устанавливаем NDK конкретной версии
     - name: Install NDK
       run: sdkmanager "ndk;25.2.9519653"
 
-    - name: Prepare C++ Environment
+    - name: Fix Makefiles for Linux & Prepare C++
       run: |
         cd src
-        # Переименовываем .c в .cpp, если он называется .c
+        
+        # 1. Переименовываем main.c в main.cpp (для C++)
         if [ -f main.c ]; then mv main.c main.cpp; fi
         
-        # ХАК: Патчим Makefile от Raylib, чтобы он понимал C++
-        # Меняем gcc на g++
+        # 2. ЛЕЧИМ MAKEFILE ОТ WINDOWS-КОМАНД
+        # Удаляем "cmd /c" (вызов командной строки Windows)
+        sed -i 's/cmd \/c //g' Makefile
+        sed -i 's/cmd \/c //g' Makefile.Android
+        
+        # Заменяем "if exist" на "test -e" (проверка файла в Linux)
+        sed -i 's/if exist/test -e/g' Makefile.Android
+        
+        # Заменяем удаление папок (rmdir /s /q -> rm -rf)
+        sed -i 's/rmdir \/s \/q/rm -rf/g' Makefile.Android
+        sed -i 's/del \/s \/q/rm -rf/g' Makefile.Android
+        
+        # Исправляем слеши (обратные \ на прямые /)
+        sed -i 's/\\/\//g' Makefile.Android
+
+        # 3. Настраиваем компилятор на C++17
         sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile
-        # Меняем стандарт C99 на C++17
         sed -i 's/-std=c99/-std=c++17/' Makefile
-        # Убираем флаги, которые вызывают ошибки в C++
+        # Убираем флаги, на которые ругается C++
         sed -i 's/-Werror//' Makefile
         sed -i 's/-Wstrict-prototypes//' Makefile
 
@@ -48,11 +62,13 @@ jobs:
         export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
         
         # Запускаем сборку
+        # SHELL=bash гарантирует, что make не будет искать cmd
         make PLATFORM=PLATFORM_ANDROID \
              PROJECT_NAME=gravity \
              PROJECT_SOURCE_FILES=main.cpp \
              ANDROID_ARCH=arm64-v8a \
-             ANDROID_API_VERSION=29
+             ANDROID_API_VERSION=29 \
+             SHELL=/bin/bash
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
