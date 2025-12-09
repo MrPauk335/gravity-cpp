@@ -40,26 +40,37 @@ jobs:
         sed -i 's/-Werror//' Makefile
         sed -i 's/-Wstrict-prototypes//' Makefile
 
-        # 2. ИСПРАВЛЕНИЕ ОШИБКИ "if not exist" (Создание папок)
-        # Меняем "if not exist <путь> mkdir <путь>" на "mkdir -p <путь>"
+        # 2. УДАЛЕНИЕ "if not exist" (Создание папок)
+        # Меняем на mkdir -p
         sed -i 's/if not exist .* mkdir/mkdir -p/g' Makefile.Android
 
-        # 3. ИСПРАВЛЕНИЕ ОШИБКИ "if exist" (Удаление/Очистка)
-        # Просто удаляем строки с очисткой, они не нужны в CI
+        # 3. УДАЛЕНИЕ "if exist" (Очистка)
         sed -i '/if exist/d' Makefile.Android
-        sed -i '/rmdir/d' Makefile.Android
         
-        # 4. Удаляем мусор Windows
+        # 4. УДАЛЕНИЕ "cmd /c"
         sed -i 's/cmd \/c //g' Makefile.Android
         
-        # 5. Исправляем копирование
+        # 5. ИСПРАВЛЕНИЕ COPY (Самое важное!)
+        # Меняем все варианты регистра
+        sed -i 's/copy \/Y/cp -f/g' Makefile.Android
         sed -i 's/copy \/y/cp -f/g' Makefile.Android
-        sed -i 's/xcopy \/y \/e \/h/cp -r/g' Makefile.Android
+        sed -i 's/COPY \/Y/cp -f/g' Makefile.Android
         
-        # 6. Исправляем слеши в путях (но не ломаем структуру файла)
+        # 6. ИСПРАВЛЕНИЕ СЛЕШЕЙ В ПУТЯХ
+        # Меняем обратные слеши на прямые в путях проекта
         sed -i 's/android.gravity\\/android.gravity\//g' Makefile.Android
-        sed -i 's/obj\\/obj\//g' Makefile.Android
-        sed -i 's/bin\\/bin\//g' Makefile.Android
+        sed -i 's/\\obj/\/obj/g' Makefile.Android
+        sed -i 's/\\bin/\/bin/g' Makefile.Android
+        sed -i 's/\\lib/\/lib/g' Makefile.Android
+        sed -i 's/\\src/\/src/g' Makefile.Android
+        sed -i 's/\\res/\/res/g' Makefile.Android
+        sed -i 's/\\assets/\/assets/g' Makefile.Android
+        
+        # 7. ИСПРАВЛЕНИЕ ПУТИ К RAYLIB
+        # Шаблон думает, что raylib лежит в ../../raylib, но у нас он внутри src/raylib (из-за checkout)
+        # Меняем путь поиска библиотеки
+        sed -i 's/..\\..\\raylib/raylib/g' Makefile.Android
+        sed -i 's/..\/..\/raylib/raylib/g' Makefile.Android
 
     - name: Build APK
       run: |
