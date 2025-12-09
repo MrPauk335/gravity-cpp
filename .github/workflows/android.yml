@@ -13,31 +13,46 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    # ИСПРАВЛЕНИЕ 1: Ставим Java 17 (обязательно для новых Android Tools)
     - name: Setup Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
-        java-version: '11'
+        java-version: '17'
 
-    - name: Setup Android SDK/NDK
+    - name: Setup Android SDK
       uses: android-actions/setup-android@v3
-    
+
+    # ИСПРАВЛЕНИЕ 2: Устанавливаем NDK конкретной версии
     - name: Install NDK
       run: sdkmanager "ndk;25.2.9519653"
+
+    - name: Prepare C++ Environment
+      run: |
+        cd src
+        # Переименовываем .c в .cpp, если он называется .c
+        if [ -f main.c ]; then mv main.c main.cpp; fi
+        
+        # ХАК: Патчим Makefile от Raylib, чтобы он понимал C++
+        # Меняем gcc на g++
+        sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile
+        # Меняем стандарт C99 на C++17
+        sed -i 's/-std=c99/-std=c++17/' Makefile
+        # Убираем флаги, которые вызывают ошибки в C++
+        sed -i 's/-Werror//' Makefile
+        sed -i 's/-Wstrict-prototypes//' Makefile
 
     - name: Build APK
       run: |
         cd src
-        # ВНИМАНИЕ: Это черная магия. 
-        # Мы говорим Make использовать clang++ вместо gcc и принудительно читать .c как c++ (-x c++)
-        # Также указываем путь к NDK вручную, так как GitHub Actions иногда тупит с путями
         export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
+        
+        # Запускаем сборку
         make PLATFORM=PLATFORM_ANDROID \
-             CC="clang++ -x c++ -std=c++17 -stdlib=libc++" \
              PROJECT_NAME=gravity \
-             PROJECT_SOURCE_FILES=main.c \
+             PROJECT_SOURCE_FILES=main.cpp \
              ANDROID_ARCH=arm64-v8a \
-             raylib
+             ANDROID_API_VERSION=29
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
