@@ -31,10 +31,8 @@ jobs:
       run: |
         cd src
         
-        # 1. Переименовываем код в C++
+        # 1. C++ Setup
         if [ -f main.c ]; then mv main.c main.cpp; fi
-        
-        # 2. НАСТРОЙКА C++ КОМПИЛЯТОРА
         sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile
         sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile.Android
         sed -i 's/-std=c99/-std=c++17/' Makefile
@@ -42,28 +40,26 @@ jobs:
         sed -i 's/-Werror//' Makefile
         sed -i 's/-Wstrict-prototypes//' Makefile
 
-        # 3. ХИРУРГИЧЕСКОЕ УДАЛЕНИЕ WINDOWS КОМАНД
-        # Удаляем строки, содержащие "if exist" (они ломают Linux)
+        # 2. ИСПРАВЛЕНИЕ ОШИБКИ "if not exist" (Создание папок)
+        # Меняем "if not exist <путь> mkdir <путь>" на "mkdir -p <путь>"
+        sed -i 's/if not exist .* mkdir/mkdir -p/g' Makefile.Android
+
+        # 3. ИСПРАВЛЕНИЕ ОШИБКИ "if exist" (Удаление/Очистка)
+        # Просто удаляем строки с очисткой, они не нужны в CI
         sed -i '/if exist/d' Makefile.Android
-        # Удаляем строки, содержащие "cmd /c"
-        sed -i '/cmd \/c/d' Makefile.Android
-        # Удаляем строки с удалением папок (clean нам не нужен в CI)
         sed -i '/rmdir/d' Makefile.Android
-        sed -i '/del \//d' Makefile.Android
         
-        # 4. ЗАМЕНА КОМАНД КОПИРОВАНИЯ
-        # Меняем copy на cp (копирование APK в конце)
+        # 4. Удаляем мусор Windows
+        sed -i 's/cmd \/c //g' Makefile.Android
+        
+        # 5. Исправляем копирование
         sed -i 's/copy \/y/cp -f/g' Makefile.Android
         sed -i 's/xcopy \/y \/e \/h/cp -r/g' Makefile.Android
         
-        # 5. ИСПРАВЛЕНИЕ СЛЕШЕЙ (ТОЛЬКО В ПУТЯХ)
-        # Мы НЕ меняем все слеши, чтобы не сломать переносы строк!
-        # Меняем только в путях к папкам bin, src, lib
-        sed -i 's/\\bin/\/bin/g' Makefile.Android
-        sed -i 's/\\src/\/src/g' Makefile.Android
-        sed -i 's/\\lib/\/lib/g' Makefile.Android
-        sed -i 's/\\obj/\/obj/g' Makefile.Android
+        # 6. Исправляем слеши в путях (но не ломаем структуру файла)
         sed -i 's/android.gravity\\/android.gravity\//g' Makefile.Android
+        sed -i 's/obj\\/obj\//g' Makefile.Android
+        sed -i 's/bin\\/bin\//g' Makefile.Android
 
     - name: Build APK
       run: |
