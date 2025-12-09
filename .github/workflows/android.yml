@@ -31,40 +31,34 @@ jobs:
       run: |
         cd src
         
-        # 1. Переименовываем main.c в main.cpp
+        # 1. Переименовываем код в C++
         if [ -f main.c ]; then mv main.c main.cpp; fi
         
-        # 2. ИСПРАВЛЕНИЕ КОМПИЛЯТОРА (C++17)
-        # Меняем gcc на g++
+        # 2. НАСТРОЙКА C++ КОМПИЛЯТОРА
         sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile
         sed -i 's/$(ANDROID_ARCH_NAME)-gcc/$(ANDROID_ARCH_NAME)-g++/' Makefile.Android
-        # Меняем стандарт и флаги
         sed -i 's/-std=c99/-std=c++17/' Makefile
         sed -i 's/-std=c99/-std=c++17/' Makefile.Android
         sed -i 's/-Werror//' Makefile
         sed -i 's/-Wstrict-prototypes//' Makefile
 
-        # 3. ЗАМЕНА WINDOWS КОМАНД НА LINUX (Глобальная чистка)
+        # 3. ХИРУРГИЧЕСКОЕ УДАЛЕНИЕ WINDOWS КОМАНД
+        # Удаляем строки, содержащие "if exist" (они ломают Linux)
+        sed -i '/if exist/d' Makefile.Android
+        # Удаляем строки, содержащие "cmd /c"
+        sed -i '/cmd \/c/d' Makefile.Android
+        # Удаляем строки с удалением папок (clean нам не нужен в CI)
+        sed -i '/rmdir/d' Makefile.Android
+        sed -i '/del \//d' Makefile.Android
         
-        # Удаляем префикс "cmd /c"
-        sed -i 's/cmd \/c //g' Makefile.Android
-        
-        # Заменяем "if exist ... rmdir ..." на "rm -rf"
-        # Мы ищем строку, где есть rmdir /s /q, и заменяем всё начало строки на rm -rf
-        sed -i 's/if exist .* rmdir \/s \/q/rm -rf/g' Makefile.Android
-        
-        # Заменяем "if not exist ... mkdir" на "mkdir -p"
-        sed -i 's/if not exist .* mkdir/mkdir -p/g' Makefile.Android
-        
-        # Заменяем удаление файлов
-        sed -i 's/del \/f \/q/rm -f/g' Makefile.Android
-        
-        # Заменяем копирование
+        # 4. ЗАМЕНА КОМАНД КОПИРОВАНИЯ
+        # Меняем copy на cp (копирование APK в конце)
         sed -i 's/copy \/y/cp -f/g' Makefile.Android
         sed -i 's/xcopy \/y \/e \/h/cp -r/g' Makefile.Android
         
-        # 4. ИСПРАВЛЕНИЕ ПУТЕЙ (Слеши)
-        # Меняем обратные слеши на прямые ТОЛЬКО в путях (чтобы не сломать сам Makefile)
+        # 5. ИСПРАВЛЕНИЕ СЛЕШЕЙ (ТОЛЬКО В ПУТЯХ)
+        # Мы НЕ меняем все слеши, чтобы не сломать переносы строк!
+        # Меняем только в путях к папкам bin, src, lib
         sed -i 's/\\bin/\/bin/g' Makefile.Android
         sed -i 's/\\src/\/src/g' Makefile.Android
         sed -i 's/\\lib/\/lib/g' Makefile.Android
@@ -77,7 +71,6 @@ jobs:
         export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
         
         # Запускаем сборку
-        # SHELL=/bin/bash обязательно
         make PLATFORM=PLATFORM_ANDROID \
              PROJECT_NAME=gravity \
              PROJECT_SOURCE_FILES=main.cpp \
