@@ -1,0 +1,46 @@
+name: Android Build
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    - name: Setup Android SDK/NDK
+      uses: android-actions/setup-android@v3
+    
+    - name: Install NDK
+      run: sdkmanager "ndk;25.2.9519653"
+
+    - name: Build APK
+      run: |
+        cd src
+        # ВНИМАНИЕ: Это черная магия. 
+        # Мы говорим Make использовать clang++ вместо gcc и принудительно читать .c как c++ (-x c++)
+        # Также указываем путь к NDK вручную, так как GitHub Actions иногда тупит с путями
+        export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653
+        make PLATFORM=PLATFORM_ANDROID \
+             CC="clang++ -x c++ -std=c++17 -stdlib=libc++" \
+             PROJECT_NAME=gravity \
+             PROJECT_SOURCE_FILES=main.c \
+             ANDROID_ARCH=arm64-v8a \
+             raylib
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: gravity-apk
+        path: src/*.apk
